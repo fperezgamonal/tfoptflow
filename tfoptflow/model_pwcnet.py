@@ -14,6 +14,7 @@ import datetime
 import warnings
 import numpy as np
 import pandas as pd
+import os
 import tensorflow as tf
 from tqdm import trange
 from tensorflow.contrib.mixed_precision import LossScaleOptimizer, FixedLossScaleManager
@@ -954,11 +955,15 @@ class ModelPWCNet(ModelBase):
         else:
             return None
 
-    def predict_from_img_pairs(self, img_pairs, batch_size=1, verbose=False):
+    def predict_from_img_pairs(self, img_pairs, batch_size=1, save_preds=True, image_names=None, output_path='./',
+                               verbose=False):
         """Inference loop. Run inference on a list of image pairs.
         Args:
             img_pairs: list of image pairs/tuples in list((img_1, img_2),...,(img_n, img_nplusone)) format.
             batch_size: size of the batch to process (all images must have the same dimension, if batch_size>1)
+            save_preds: if True, the predictions are saved to disk in .flo and .png format
+            image_names: name of the input images (one per pair). Output flow will be given the same name (changing .flo by .png)
+            output_path: where to save the predictions
             verbose: if True, show progress bar
         Returns:
             Predicted flows in list format
@@ -1000,8 +1005,28 @@ class ModelPWCNet(ModelBase):
                 y_hat = self.sess.run(self.y_hat_test_tnsr, feed_dict=feed_dict)
                 y_hats, _ = self.postproc_y_hat_test(y_hat, y_adapt_info)
 
+                # Save the predicted flows to disk, if requested
                 # Return flat list of predicted labels
-                for y_hat in y_hats:
+                aux = 0
+                for y_hat, image_name in zip(y_hats, image_names):
+                    aux += 1
+                    if save_preds is True:
+                        if image_name is not None and image_name:  # if it is NOT None nor empty
+                            flo_name = '{0}.flo'.format(image_name[:-4])
+                            viz_name = '{0}_viz.png'.format(image_name[:-4])
+                            out_flo = os.path.join(output_path, flo_name)
+                            out_viz = os.path.join(output_path, viz_name)
+
+                        else:  # Define temporal name to avoid overwritting older pairs with new ones
+                            flo_name = 'frame_{0:04d}.flo'.format(image_name[-4])
+                            viz_name = 'frame_{0:04d}_viz.png'.format(image_name[-4])
+                            out_flo = os.path.join(output_path, flo_name)
+                            out_viz = os.path.join(output_path, viz_name)
+
+                        # Actually save flo + png
+                        flow_write(y_hat, out_flo)
+                        flow_write_as_png(y_hat, out_viz)
+
                     preds.append(y_hat)
 
         return preds[0:test_size]
